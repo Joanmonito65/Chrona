@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Fullscreen Clock</title>
+<style>
+*{box-sizing:border-box}
+body{--h:170;--bg:#000;--fg:#fff;--dim:#9aa0aa;--panel:#15171b;--line:rgba(255,255,255,.16);--chip:rgba(255,255,255,.08);--accent:hsl(var(--h) 85% 62%);
+margin:0;height:100vh;height:100dvh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;overflow:hidden;user-select:none;-webkit-user-select:none;background:var(--bg);color:var(--fg);font-family:"Avenir Next","Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,sans-serif;transition:background-color .5s,color .5s}
+body[data-theme=light]{--bg:#fff;--fg:#111;--dim:#666d78;--panel:#f4f5f7;--line:rgba(0,0,0,.16);--chip:rgba(0,0,0,.06);--accent:hsl(var(--h) 80% 30%)}
+body[data-ui=modern]{background:radial-gradient(70vmax 50vmax at 50% 42%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),var(--bg)}
+
+/* clock face */
+#face{display:inline-block}
+#clock{white-space:nowrap;line-height:1;font-variant-numeric:tabular-nums}
+#bar{height:2px;margin-top:2.4vh;border-radius:2px;background:var(--line);overflow:hidden}
+#bar i{display:block;height:100%;width:0;background:var(--accent);transition:width 1s linear}
+#zone{display:flex;align-items:center;justify-content:center;gap:.9em;margin-top:2.6vh;font-size:max(14px,min(2.4vw,4vh));color:var(--dim);cursor:pointer}
+#zoff{padding:.15em .75em;border:1px solid var(--line);border-radius:999px;color:var(--fg);font-variant-numeric:tabular-nums}
+#date{margin-top:1.4vh;font-size:max(15px,min(3.2vw,5vh));opacity:.85}
+body[data-ui=modern] #clock{font-size:min(21vw,36vh);font-weight:200;letter-spacing:-.02em}
+body[data-ui=modern] #sec{font-size:.42em;font-weight:300;color:var(--accent);margin-left:.06em}
+body[data-ui=modern] #ap{font-size:.26em;font-weight:400;color:var(--dim);margin-left:.3em;letter-spacing:0}
+
+/* classic (old) look */
+body[data-ui=classic]{font-family:Arial,sans-serif;font-size:10vw}
+body[data-ui=classic] #ap{margin-left:.3em}
+body[data-ui=classic] #date{font-size:5vw;margin-top:10px;opacity:1}
+body[data-ui=classic] #zone,body[data-ui=classic] #bar,body[data-ui=classic] #sync{display:none}
+
+/* controls */
+#controls{position:absolute;display:flex}
+.cb[hidden]{display:none!important}
+.ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.m,.c{display:none}
+body[data-ui=modern] .m{display:inline}
+body[data-ui=classic] .c{display:inline}
+body[data-ui=modern] #controls{bottom:calc(env(safe-area-inset-bottom,0px) + 44px);left:50%;transform:translateX(-50%);gap:4px;padding:6px;background:var(--chip);border:1px solid var(--line);border-radius:999px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+body[data-ui=modern] .cb{display:flex;align-items:center;gap:8px;padding:10px 16px;border:0;border-radius:999px;background:transparent;color:var(--fg);font-family:inherit;font-size:.9rem;font-weight:500;line-height:1;cursor:pointer;transition:background .2s}
+body[data-ui=modern] .cb:hover{background:var(--chip)}
+body[data-ui=modern] .classic-only{display:none}
+body[data-ui=classic] #controls{top:10px;left:10px;flex-direction:column;gap:10px}
+body[data-ui=classic] .cb{padding:10px;font-size:1rem;border:none;border-radius:5px;cursor:pointer;background:#444;color:#fff;transition:background-color .3s,color .3s}
+body[data-ui=classic][data-theme=light] .cb{background:#ccc;color:#000}
+body[data-ui=classic] .ic{display:none}
+@media(max-width:560px){body[data-ui=modern] .m{display:none}body[data-ui=modern] .cb{padding:12px 14px}}
+
+#sync{position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);left:14px;max-width:calc(100% - 80px);display:flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--chip);color:var(--dim);font-size:.75rem;cursor:pointer}
+#sync i{flex:none;width:8px;height:8px;border-radius:50%;background:#9aa0aa}
+#sync.ok i{background:#34d399;box-shadow:0 0 8px #34d399}
+#sync.bad i{background:#f59e0b}
+#fullscreenClose{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);right:10px;display:none;padding:10px;font-size:1rem;background:red;color:#fff;border:none;border-radius:5px;cursor:pointer}
+body[data-ui=modern] #fullscreenClose{width:44px;height:44px;padding:0;border:1px solid var(--line);border-radius:50%;background:var(--chip);color:var(--fg);opacity:.4}
+body[data-ui=modern] #fullscreenClose:hover{opacity:1}
+#note{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);left:0;right:0;padding:0 16px;font-size:.7rem;color:var(--dim)}
+body.fs #fullscreenClose{display:block}
+body.fs #controls,body.fs #note,body.fs #sync{display:none}
+
+/* panels */
+.panel{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);font:16px/1.4 "Avenir Next","Segoe UI",system-ui,-apple-system,sans-serif;color:var(--fg);text-align:left}
+.panel[hidden]{display:none}
+.sheet{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(86vh,720px);background:var(--panel);border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.sheet.tall{height:min(86vh,720px)}
+.sheet header{display:flex;justify-content:space-between;align-items:center;padding:16px 18px 8px;font-size:1.1rem;font-weight:600}
+.x{padding:2px 10px;border:0;background:none;color:var(--dim);font-size:1.6rem;line-height:1;cursor:pointer}
+.body{padding:8px 18px 18px;overflow:auto;min-height:0}
+#tzBody{display:flex;flex-direction:column;overflow:hidden}
+.pb{padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:var(--chip);color:var(--fg);font:inherit;cursor:pointer}
+#tzDevice{margin-top:8px;width:100%;text-align:left}
+#tzSearch{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--chip);color:var(--fg);font:inherit;outline:none}
+#tzSearch:focus{border-color:var(--accent)}
+.tz-tabs{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--chip)}
+.tz-tab{display:flex;align-items:center;justify-content:center;gap:7px;min-width:0;padding:9px 8px;border:0;border-radius:9px;background:transparent;color:var(--dim);font:inherit;font-size:.9rem;cursor:pointer}
+.tz-tab[aria-selected=true]{background:var(--accent);color:var(--bg);font-weight:600}
+.tz-tab span{font-size:.75em;opacity:.75;font-variant-numeric:tabular-nums}
+#tzList{flex:1;min-height:0;margin-top:10px;overflow:auto}
+.tz{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:10px 12px;border:0;border-radius:10px;background:transparent;color:var(--fg);font:inherit;text-align:left;cursor:pointer}
+.tz.offset b{font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.tz[hidden]{display:none}
+.tz:hover{background:var(--chip)}
+.tz.sel{background:var(--accent);color:var(--bg)}
+.tz b{font-weight:600}
+.tz small{display:block;color:var(--dim)}
+.tz.sel small{color:inherit;opacity:.75}
+.tz time{white-space:nowrap;font-variant-numeric:tabular-nums}
+.hint{margin:12px 0 0;color:var(--dim);font-size:.85rem}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.seg{display:flex;gap:2px;min-width:190px;padding:3px;border-radius:10px;background:var(--chip)}
+.seg button{flex:1;padding:8px 10px;border:0;border-radius:8px;background:transparent;color:var(--dim);font:inherit;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+.sw{display:flex;gap:10px}
+.sw button{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:hsl(var(--c) 85% 60%);cursor:pointer}
+.sw button[aria-pressed=true]{outline:2px solid var(--fg);outline-offset:2px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* compact timezone picker on phones */
+@media(max-width:560px){
+  .panel{padding:8px}
+  .sheet.tall{width:100%;height:min(90dvh,760px);max-height:90dvh;border-radius:16px}
+  .sheet header{padding:12px 14px 7px;font-size:1rem}
+  #tzBody{padding:7px 12px 12px}
+  #tzSearch{padding:11px 12px;font-size:16px}
+  #tzDevice{padding:8px 10px;font-size:12.5px;line-height:1.3}
+  .tz-tabs{gap:3px;margin-top:7px;padding:3px;border-radius:10px}
+  .tz-tab{gap:5px;padding:8px 5px;font-size:12px;line-height:1.2}
+  .tz-tab span{font-size:10px}
+  #tzCurrent,#tzHint,#tzNone{font-size:11px;line-height:1.35;margin-top:7px}
+  #tzList{margin-top:7px}
+  .tz{gap:8px;padding:8px 9px;font-size:13px;line-height:1.25}
+  .tz b{font-size:13px;font-weight:600}
+  .tz small{margin-top:2px;font-size:10.5px;line-height:1.2}
+  .tz time{font-size:11.5px}
+  .x{font-size:1.5rem;padding:2px 7px}
+}
+@media(max-width:380px){
+  .tz{padding:7px 8px;gap:6px}
+  .tz b{font-size:12.5px}
+  .tz small{font-size:10px}
+  .tz time{font-size:10.5px}
+  .tz-tab{font-size:11.5px}
+}
+@media(max-height:650px) and (max-width:560px){
+  .sheet.tall{height:94dvh;max-height:94dvh}
+  .tz{padding-top:6px;padding-bottom:6px}
+}
+</style>
+</head>
+<body data-ui="modern" data-theme="dark">
+<div id="face">
+  <div id="clock"><span id="hm">--:--</span><span id="sec"></span><span id="ap"></span></div>
+  <div id="bar"><i></i></div>
+</div>
+<div id="zone" role="button" tabindex="0" title="Change time zone"><span id="zn"></span><span id="zoff"></span></div>
+<div id="date" hidden></div>
+
+<div id="sync" class="wait" role="button" title="Sync now"><i></i><span id="syncTxt">Syncing time…</span></div>
+
+<nav id="controls" aria-label="Clock controls">
+  <button class="cb" id="bTz" aria-label="Time zone"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="m">Time zone</span><span class="c">Change Timezones</span></button>
+  <button class="cb" id="bFs" aria-label="Fullscreen"><svg class="ic" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="m">Fullscreen</span><span class="c">Toggle Fullscreen</span></button>
+  <button class="cb" id="bTheme" aria-label="Toggle light and dark mode"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg><span class="m">Theme</span><span class="c">Light Mode</span></button>
+  <button class="cb classic-only" id="bH24"><span class="c">Toggle 24 Hour Time</span></button>
+  <button class="cb classic-only" id="bDate"><span class="c">Toggle Date</span></button>
+  <button class="cb" id="bSet" aria-label="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span class="m">Settings</span><span class="c">Settings</span></button>
+</nav>
+<button id="fullscreenClose" aria-label="Exit fullscreen">X</button>
+<div id="note">Fullscreen availability depends on your browser. iPhone and iPad browsers may not support page fullscreen.</div>
+
+<div class="panel" id="tzPanel" role="dialog" aria-modal="true" aria-label="Time zone" hidden>
+  <div class="sheet tall">
+    <header>Time zone<button class="x" aria-label="Close">&times;</button></header>
+    <div class="body" id="tzBody">
+      <input id="tzSearch" type="search" placeholder="Search a UTC offset" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="tz-tabs" id="tzTabs" role="tablist" aria-label="Time zone list">
+        <button class="tz-tab" type="button" role="tab" data-tab="offsets" aria-selected="true">UTC offsets <span id="offsetCount"></span></button>
+        <button class="tz-tab" type="button" role="tab" data-tab="all" aria-selected="false">All time zones <span id="zoneCount"></span></button>
+      </div>
+      <button class="pb" id="tzDevice"></button>
+      <p class="hint" id="tzCurrent"></p>
+      <p class="hint" id="tzHint">Showing one option per UTC offset. Search a city to choose its local time zone.</p>
+      <div id="tzList"></div>
+      <p class="hint" id="tzNone" hidden>No matching time zones.</p>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="setPanel" role="dialog" aria-modal="true" aria-label="Settings" hidden>
+  <div class="sheet">
+    <header>Settings<button class="x" aria-label="Close">&times;</button></header>
+    <div class="body">
+      <div class="row"><span>Interface</span><div class="seg" data-k="ui"><button data-v="modern">Modern</button><button data-v="classic">Classic</button></div></div>
+      <div class="row"><span>Theme</span><div class="seg" data-k="theme"><button data-v="dark">Dark</button><button data-v="light">Light</button></div></div>
+      <div class="row"><span>Time format</span><div class="seg" data-k="h24"><button data-v="false">12-hour</button><button data-v="true">24-hour</button></div></div>
+      <div class="row"><span>Seconds</span><div class="seg" data-k="seconds"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+      <div class="row"><span>Date</span><div class="seg" data-k="date"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+      <div class="row"><span>Accent color</span><div class="sw" data-k="hue">
+        <button data-v="170" style="--c:170" aria-label="Teal"></button><button data-v="215" style="--c:215" aria-label="Blue"></button><button data-v="270" style="--c:270" aria-label="Violet"></button><button data-v="330" style="--c:330" aria-label="Pink"></button><button data-v="40" style="--c:40" aria-label="Amber"></button><button data-v="130" style="--c:130" aria-label="Green"></button>
+      </div></div>
+      <div class="row"><span>Time sync</span><button class="pb" id="syncNow">Sync now</button></div>
+      <p class="hint" id="setSync"></p>
+      <p class="hint">The clock is corrected against time.gov, then other public time servers if that fails, and adjusted for network delay.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id),pad=n=>String(n).padStart(2,'0');
+let S={ui:'modern',theme:'dark',h24:false,seconds:true,date:true,hue:170};
+try{Object.assign(S,JSON.parse(localStorage.getItem('clockSettings')||'{}'))}catch(e){}
+const save=()=>{try{localStorage.setItem('clockSettings',JSON.stringify(S))}catch(e){}};
+const devTZ=Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';
+let tz=devTZ;
+try{tz=localStorage.getItem('currentTimezone')||devTZ;if(!isFixedZone(tz))new Intl.DateTimeFormat('en-US',{timeZone:tz})}catch(e){tz=devTZ}
+let off=0,sync={s:'wait'},lastSync=0,busy=false,lm='',timer,fk,ff,fd,zo={},zoAt=0,tzMode='offsets';
+const now=()=>Date.now()+off;
+
+/* ---------- time zones ---------- */
+let ZONES=[];
+try{ZONES=Intl.supportedValuesOf('timeZone')}catch(e){}
+if(!ZONES.length)ZONES='Pacific/Honolulu America/Anchorage America/Los_Angeles America/Denver America/Chicago America/New_York America/Halifax America/Sao_Paulo Atlantic/Azores Europe/London Europe/Paris Europe/Athens Europe/Moscow Africa/Cairo Africa/Lagos Africa/Nairobi Asia/Dubai Asia/Karachi Asia/Kolkata Asia/Dhaka Asia/Bangkok Asia/Shanghai Asia/Tokyo Australia/Sydney Pacific/Auckland'.split(' ');
+ZONES=['UTC',...ZONES.filter(z=>z!=='UTC')];
+[devTZ,tz].forEach(z=>{if(!isFixedZone(z)&&!ZONES.includes(z))ZONES.push(z)});
+
+function offMin(z,ms){
+  const p={};
+  new Intl.DateTimeFormat('en-US',{timeZone:z,hourCycle:'h23',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'}).formatToParts(new Date(ms)).forEach(x=>p[x.type]=x.value);
+  return Math.round((Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,p.second)-Math.floor(ms/1000)*1000)/6e4);
+}
+function offLabel(m){
+  if(!m)return'UTC';
+  const a=Math.abs(m);
+  return'UTC'+(m<0?'-':'+')+Math.floor(a/60)+(a%60?':'+pad(a%60):'');
+}
+function offLabelFull(m){
+  if(!m)return'UTC';
+  const a=Math.abs(m);
+  return'UTC'+(m<0?'-':'+')+pad(Math.floor(a/60))+':'+pad(a%60);
+}
+function fixedOffset(z){
+  if(z==='UTC')return 0;
+  const m=/^UTC([+-])(\d{2}):(\d{2})$/.exec(z);
+  return m?(m[1]==='-'?-1:1)*(+m[2]*60 + +m[3]):null;
+}
+function isFixedZone(z){return fixedOffset(z)!==null}
+
+/* ---------- clock ---------- */
+function fmts(){
+  const k=tz+S.h24+S.ui;
+  if(k===fk)return;
+  fk=k;
+  const formatZone=isFixedZone(tz)?'UTC':tz;
+  ff=new Intl.DateTimeFormat('en-US',{timeZone:formatZone,hour:S.h24||S.ui==='classic'?'2-digit':'numeric',minute:'2-digit',second:'2-digit',hourCycle:S.h24?'h23':'h12'});
+  fd=new Intl.DateTimeFormat('en-US',{timeZone:formatZone,weekday:S.ui==='classic'?undefined:'long',year:'numeric',month:'long',day:'numeric'});
+}
+function tick(){
+  clearTimeout(timer);
+  fmts();
+  const d=new Date(now()+(isFixedZone(tz)?fixedOffset(tz)*6e4:0)),p={};
+  ff.formatToParts(d).forEach(x=>p[x.type]=x.value);
+  $('hm').textContent=p.hour+':'+p.minute;
+  $('sec').textContent=S.seconds?':'+p.second:'';
+  $('ap').textContent=S.h24?'':(p.dayPeriod||'');
+  $('date').hidden=!S.date;
+  if(S.date)$('date').textContent=fd.format(d);
+  $('bar').hidden=!S.seconds;
+  const bi=$('bar').firstChild.nextSibling||$('bar').firstChild,s=+p.second;
+  if(!s){bi.style.transition='none';bi.style.width='0%';bi.offsetWidth;bi.style.transition=''}
+  bi.style.width=(s+1)/.6+'%';
+  if(p.minute!==lm){
+    lm=p.minute;
+    $('zn').textContent=isFixedZone(tz)?'Fixed UTC offset':tz.replace(/_/g,' ').replace(/\//g,' / ');
+    $('zoff').textContent=isFixedZone(tz)?tz:offLabel(offMin(tz,now()));
+  }
+  if(!$('tzPanel').hidden)rowTimes();
+  timer=setTimeout(tick,1000-now()%1000+8);
+}
+
+/* ---------- time sync (time.gov first) ---------- */
+const trim=t=>t.replace(/(\.\d{3})\d*/,'$1');
+const SRC=[
+  ['time.gov','https://time.gov/actualtime.cgi?lang=en',t=>+t.match(/time="(\d+)"/)[1]/1000],
+  ['worldtimeapi.org','https://worldtimeapi.org/api/timezone/Etc/UTC',t=>Date.parse(trim(JSON.parse(t).utc_datetime))],
+  ['timeapi.io','https://timeapi.io/api/time/current/zone?timeZone=UTC',t=>Date.parse(trim(JSON.parse(t).dateTime)+'Z')]
+];
+async function get(u){
+  const c=new AbortController(),t=setTimeout(()=>c.abort(),4000);
+  try{const r=await fetch(u,{cache:'no-store',signal:c.signal});if(!r.ok)throw 0;return await r.text()}
+  finally{clearTimeout(t)}
+}
+async function syncTime(){
+  if(busy)return;
+  busy=true;
+  const prev={off,sync};
+  sync={s:'wait'};renderSync();
+  for(const [n,u,f] of SRC){
+    try{
+      let best;
+      for(let i=0;i<3;i++){
+        const t0=Date.now(),p0=performance.now(),srv=f(await get(u)),r=performance.now()-p0;
+        if(!isFinite(srv))throw 0;
+        if(!best||r<best.r)best={r,o:srv-(t0+r/2)};
+      }
+      off=best.o;sync={s:'ok',n,r:best.r};lastSync=Date.now();
+      break;
+    }catch(e){}
+  }
+  if(sync.s!=='ok'){
+    if(prev.sync.s==='ok'){off=prev.off;sync=prev.sync}
+    else{off=0;sync={s:'bad'}}
+  }
+  busy=false;
+  renderSync();tick();
+}
+function renderSync(){
+  const ok=sync.s==='ok',t=ok?'Synced with '+sync.n+' (±'+Math.max(1,Math.round(sync.r/2))+' ms)':sync.s==='wait'?'Syncing time…':'Device clock, not synced';
+  $('syncTxt').textContent=t;
+  $('sync').className=sync.s;
+  $('setSync').textContent=t+(ok?'. Your device clock is '+Math.abs(Math.round(off))+' ms '+(off>0?'slow':'fast')+'.':'.');
+}
+
+/* ---------- time zone picker ---------- */
+function buildList(){
+  const t=now();
+  zo={};
+  const offsets=[...new Set(ZONES.map(z=>zo[z]=offMin(z,t)))].sort((a,b)=>a-b);
+  const offsetRows=offsets.map(m=>{
+    const label=offLabelFull(m),short=offLabel(m);
+    const search=(label+' '+short+' '+short.replace('UTC','GMT')+' '+(m===0?'zero':m<0?'behind':'ahead')).toLowerCase();
+    return'<button class="tz offset" data-kind="offset" data-offset="'+m+'" data-s="'+search+'"><span><b>'+label+'</b><small>Fixed offset · no daylight saving changes</small></span><time></time></button>';
+  }).join('');
+  const cityRows=ZONES.map(z=>{
+    const m=zo[z],l=offLabel(m),n=z.split('/'),city=n.pop().replace(/_/g,' '),region=n.join(' / ').replace(/_/g,' ');
+    const search=(z+' '+city+' '+region+' '+l+' '+l.replace('UTC','GMT')).toLowerCase().replace(/_/g,' ');
+    return'<button class="tz city" data-kind="city" data-z="'+z+'" data-s="'+search+'"><span><b>'+city+'</b><small>'+[l,region].filter(Boolean).join(', ')+'</small></span><time></time></button>';
+  }).join('');
+  $('tzList').innerHTML=offsetRows+cityRows;
+  $('offsetCount').textContent=offsets.length;
+  $('zoneCount').textContent=ZONES.length;
+  zoAt=Date.now();
+}
+function rowTimes(){
+  const t=now();
+  $('tzList').querySelectorAll('.tz').forEach(b=>{
+    const m=b.dataset.kind==='offset'?+b.dataset.offset:zo[b.dataset.z];
+    const d=new Date(t+m*6e4),h=d.getUTCHours(),minute=pad(d.getUTCMinutes());
+    b.lastChild.textContent=S.h24?pad(h)+':'+minute:(h%12||12)+':'+minute+' '+(h<12?'AM':'PM');
+  });
+}
+function filterTZ(){
+  const q=$('tzSearch').value.trim().toLowerCase().replace(/_/g,' ');
+  const kind=tzMode==='offsets'?'offset':'city';
+  const compact=q.replace(/\s+/g,'').replace(/^gmt/,'utc');
+  const parsed=/^(?:utc)?([+-])(\d{1,2})(?::(\d{1,2}))?$/.exec(compact);
+  const zeroQuery=/^(utc|0|utc\+0|utc-0)$/.test(compact);
+  let n=0;
+  $('tzList').querySelectorAll('.tz').forEach(b=>{
+    let match=!q||b.dataset.s.includes(q);
+    if(kind==='offset'&&q&&parsed){
+      const minutes=+parsed[2]*60+(parsed[3]?+parsed[3]:0);
+      match=minutes%60<60&&+b.dataset.offset===(parsed[1]==='-'?-minutes:minutes);
+    }else if(kind==='offset'&&zeroQuery){match=+b.dataset.offset===0}
+    const hide=b.dataset.kind!==kind||!match;
+    b.hidden=hide;
+    if(!hide)n++;
+  });
+  $('tzTabs').querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===tzMode)));
+  $('tzSearch').placeholder=kind==='offset'?'Search a UTC offset (for example, UTC+05:30)':'Search city, region or UTC offset';
+  $('tzHint').textContent=kind==='offset'
+    ?'One entry per unique current UTC offset. These are fixed offsets and do not change for daylight saving time.'
+    :'All available named time zones. City and region times automatically follow daylight saving time where applicable.';
+  $('tzNone').hidden=n>0;
+}
+function openTZ(){
+  openP('tzPanel');
+  if(Date.now()-zoAt>15*60e3||!$('tzList').children.length)buildList();
+  $('tzSearch').value='';filterTZ();rowTimes();
+  const currentName=isFixedZone(tz)?'Fixed offset '+tz:tz.replace(/_/g,' ').replace(/\//g,' / ');
+  $('tzCurrent').textContent='Current selection: '+currentName+' ('+offLabel(isFixedZone(tz)?fixedOffset(tz):offMin(tz,now()))+')';
+  $('tzList').querySelectorAll('.tz').forEach(b=>{
+    const selected=b.dataset.kind==='offset'
+      ? isFixedZone(tz)&&+b.dataset.offset===fixedOffset(tz)
+      : !isFixedZone(tz)&&b.dataset.z===tz;
+    b.classList.toggle('sel',selected);
+  });
+  const sel=$('tzList').querySelector('.sel');
+  if(sel)sel.scrollIntoView({block:'center'});
+  if(matchMedia('(hover:hover)').matches)$('tzSearch').focus();
+}
+function setTZ(z){
+  tz=z;lm='';
+  try{localStorage.setItem('currentTimezone',z)}catch(e){}
+  closeAll();tick();
+}
+
+/* ---------- panels, settings, fullscreen ---------- */
+function openP(id){$(id).hidden=false}
+function closeAll(){document.querySelectorAll('.panel').forEach(p=>p.hidden=true)}
+function set(k,v){S[k]=v;save();apply()}
+function apply(){
+  const b=document.body;
+  b.dataset.ui=S.ui;b.dataset.theme=S.theme;b.style.setProperty('--h',S.hue);
+  document.querySelectorAll('[data-k]').forEach(g=>g.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.v===String(S[g.dataset.k])))));
+  $('bTheme').querySelector('.c').textContent=S.theme==='dark'?'Light Mode':'Dark Mode';
+  document.querySelector('meta[name=theme-color]').content=S.theme==='dark'?'#000000':'#ffffff';
+  tick();
+}
+const root=document.documentElement,rfs=root.requestFullscreen||root.webkitRequestFullscreen;
+const isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+// Hide the control when the browser explicitly reports that fullscreen is unavailable.
+const canFS=!isIOS&&!!rfs&&document.fullscreenEnabled!==false,fsEl=()=>document.fullscreenElement||document.webkitFullscreenElement;
+function fullscreenUnavailable(){
+  $('bFs').hidden=true;
+  $('note').textContent='Fullscreen is unavailable in this browser or viewing context.';
+}
+function toggleFS(){
+  if(!canFS)return;
+  const current=fsEl(),fn=current?(document.exitFullscreen||document.webkitExitFullscreen):rfs;
+  if(!fn){fullscreenUnavailable();return;}
+  try{
+    const r=fn.call(current?document:root);
+    if(r&&typeof r.catch==='function')r.catch(fullscreenUnavailable);
+  }catch(e){fullscreenUnavailable();}
+}
+['fullscreenchange','webkitfullscreenchange'].forEach(e=>document.addEventListener(e,()=>{document.body.classList.toggle('fs',!!fsEl());closeAll();tick()}));
+
+$('bTz').onclick=openTZ;
+$('zone').onclick=openTZ;
+$('zone').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openTZ()}};
+$('bFs').onclick=toggleFS;
+$('fullscreenClose').onclick=toggleFS;
+$('bTheme').onclick=()=>set('theme',S.theme==='dark'?'light':'dark');
+$('bH24').onclick=()=>set('h24',!S.h24);
+$('bDate').onclick=()=>set('date',!S.date);
+$('bSet').onclick=()=>{openP('setPanel');renderSync()};
+$('sync').onclick=syncTime;
+$('syncNow').onclick=syncTime;
+$('tzSearch').oninput=filterTZ;
+$('tzTabs').onclick=e=>{const b=e.target.closest('[data-tab]');if(!b)return;tzMode=b.dataset.tab;$('tzSearch').value='';filterTZ();};
+$('tzDevice').onclick=()=>setTZ(devTZ);
+$('tzList').onclick=e=>{
+  const b=e.target.closest('.tz');
+  if(!b)return;
+  if(b.dataset.kind==='offset'){
+    const m=+b.dataset.offset;
+    setTZ(m===0?'UTC':'UTC'+(m<0?'-':'+')+pad(Math.floor(Math.abs(m)/60))+':'+pad(Math.abs(m)%60));
+  }else setTZ(b.dataset.z);
+};
+document.querySelectorAll('.panel').forEach(p=>p.onclick=e=>{if(e.target===p||e.target.closest('.x'))closeAll()});
+document.querySelectorAll('[data-k]').forEach(g=>g.onclick=e=>{
+  const b=e.target.closest('button');
+  if(!b)return;
+  const v=b.dataset.v;
+  set(g.dataset.k,v==='true'?true:v==='false'?false:/^\d+$/.test(v)?+v:v);
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAll()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){tick();if(Date.now()-lastSync>6e4)syncTime()}});
+
+$('bFs').hidden=!canFS;
+if(!canFS)$('note').textContent='Fullscreen is not supported by this browser or device.';
+$('tzDevice').textContent='Use device time zone ('+devTZ.replace(/_/g,' ')+')';
+apply();
+syncTime();
+setInterval(syncTime,6e5);
+</script>
+</body>
+</html>
